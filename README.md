@@ -20,3 +20,35 @@ group G extends S(4)*Z(2) {
 TODO - how do we label the rest?
  - the point of labeling/defining these groups is to be adjunct to
    the permutations, e.g. `(UL DR:x DL:y)`
+
+Ultimately we want to define a puzzle:
+
+```
+puzzle R3 {
+  partition corner {
+    FUL, FUR, FDL, FDR, BUL, BUR, BDL, BDL;
+    group G1;
+  }
+  partition edge {
+    FU, FL, FR, FD, BU, BL, BR, BD,
+    UL, UR, DL, DR;
+    group G2;
+  }
+}
+```
+
+Then we define rotations.
+
+```
+L = (FUL:x FDL:x BDL:x BUL:x)(FL:x DL:x BL:x UL:x)
+R = (FUR:x3 BUR:x3 BDR:x3 FDR:x3)(FR:x3 UR:x3 BR:x3 DR:x3)
+F = ...
+```
+
+Finally commutators.
+
+```
+#L        // -> 4
+L F L~ F~ // -> (FUL FDL:xy)(FU BL:x FL:z) or whatever
+[L, F]    // maybe an easier way to write a commutator?
+```
