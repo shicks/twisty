@@ -3,12 +3,14 @@ const CYCLE_PIVOT = 0;
 export interface GroupElement {
   mul(x: GroupElement): GroupElement;
   eq(x: GroupElement): boolean;
+  inv(): GroupElement;
   readonly name: string;
   // hash? name?
 }
 
 export interface Group extends Iterable<GroupElement> {
   parse(name: string): GroupElement|undefined;
+  id(): GroupElement;
 }
 
 
@@ -22,6 +24,9 @@ export class DihedralGroup implements Group {
       }
     }
     this.elements = elts;
+  }
+  id(): GroupElement {
+    return this.elements[0];
   }
   parse(name: string): GroupElement|undefined {
     const match = /^(r?)(-?\d*)(s?)(\d*)$/.exec(name);
@@ -60,6 +65,10 @@ class DihedralElement implements GroupElement {
     // NOTE: singletons
     return this === that;
   }
+  inv(): GroupElement {
+    if (!this.r || this.s) return this;
+    return this.group.elements[this.group.n - this.r];
+  }
   toString() { return this.name; }
 }
 
@@ -83,6 +92,9 @@ export class CyclicGroup implements Group {
   [Symbol.iterator]() {
     return this.elements[Symbol.iterator]();
   }
+  id(): GroupElement {
+    return this.elements[0];
+  }
   toString() {
     return `Z${this.n}`;
   }
@@ -105,16 +117,26 @@ class CyclicElement implements GroupElement {
     // NOTE: singletons
     return this === that;
   }
+  inv(): GroupElement {
+    if (!this.i) return this;
+    return this.group.elements[this.group.n - this.i];
+  }
   toString() { return this.name; }
 }
 
+function range(n: number) {
+  return Array.from({length: n}, (_, i) => i);
+}
 
 abstract class PermutationGroup {
   constructor(readonly n: number) {}
+  id() {
+    return new Permutation(range(this.n));
+  }
 }
 
 function* permute(n: number, yieldOdds: boolean) {
-  const arr = Array.from({length: n}, (_, i) => i);
+  const arr = range(n);
   let parity = 0;
   function swap(a, b) {
     const t = arr[a];
@@ -183,6 +205,14 @@ class Permutation implements GroupElement {
       return false;
     }
     return this.arr.every((d, i) => d === that.arr[i]);
+  }
+
+  inv(): GroupElement {
+    const out = [];
+    for (let i = 0; i < this.arr.length; i++) {
+      out[this.arr[i]] = i;
+    }
+    return new Permutation(out, this.labels);
   }
 
   toCycles(): number[][] {
@@ -261,6 +291,10 @@ export class DirectProductGroup implements Group {
     return new DirectProductElement(this, elts);
   }
 
+  id(): GroupElement {
+    return new DirectProductElement(this, this.groups.map(g => g.id()));
+  }
+
   toString() {
     return this.groups.join('×');
   }
@@ -285,6 +319,9 @@ class DirectProductElement implements GroupElement {
       if (!this.elts[i].eq(that.elts[i])) return false;
     }
     return true;
+  }
+  inv(): GroupElement {
+    return new DirectProductElement(this.group, this.elts.map(e => e.inv()));
   }
   toString() { return this.name; }
 }

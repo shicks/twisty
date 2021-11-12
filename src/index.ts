@@ -15,3 +15,4 @@ for (const x of g) {
     console.log(`${x} ${y} = ${x.mul(y)}`);
   }
 }
+
