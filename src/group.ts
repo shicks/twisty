@@ -1,3 +1,5 @@
+const CYCLE_PIVOT = 0;
+
 export interface GroupElement {
   mul(x: GroupElement): GroupElement;
   eq(x: GroupElement): boolean;
@@ -107,12 +109,119 @@ class CyclicElement implements GroupElement {
 }
 
 
-export class SymmetricGroup implements Group {
+abstract class PermutationGroup {
+  constructor(readonly n: number) {}
+}
+
+function* permute(n: number, yieldOdds: boolean) {
+  const arr = Array.from({length: n}, (_, i) => i);
+  let parity = 0;
+  function swap(a, b) {
+    const t = arr[a];
+    arr[a] = arr[b];
+    arr[b] = t;
+    parity ^= 1;
+  }
+  while (true) {
+    if (yieldOdds || !parity) yield new Permutation([...arr]);
+    let i = n - 1;
+    while (i > 0 && arr[i - 1] >= arr[i]) { i--; }
+    if (i <= 0) return;
+    let j = n;
+    while (j > i && arr[j - 1] <= arr[i - 1]) { j--; }
+    swap((i++) - 1, j - 1);
+    j = n;
+    while (i < j) {
+      swap((i++) - 1, (j--) - 1);
+    }
+  }
+}
+
+export class SymmetricGroup extends PermutationGroup {
   // Question: do we notate w/ cyces or permutation lists?
   // Maybe it depends on n?
   // But what about the parse?  Always accept cycles?
-  // Maybe otate w/ [] for list or () for cycles?
+  // Maybe notate w/ [] for list or () for cycles?
+  constructor(n: number) { super(n); }
 
+  *[Symbol.iterator]() {
+    yield* permute(this.n, true);
+  }
+}
+
+export class AlternatingGroup extends PermutationGroup {
+  // Question: do we notate w/ cyces or permutation lists?
+  // Maybe it depends on n?
+  // But what about the parse?  Always accept cycles?
+  // Maybe notate w/ [] for list or () for cycles?
+  constructor(n: number) { super(n); }
+
+  *[Symbol.iterator]() {
+    yield* permute(this.n, false);
+  }
+}
+
+class Permutation implements GroupElement {
+  constructor(readonly arr: readonly number[],
+              readonly labels?: readonly string[]) {}
+
+  private _name?: string = undefined;
+
+  mul(that: GroupElement): GroupElement {
+    if (!(that instanceof Permutation) || that.arr.length !== this.arr.length) {
+      throw new Error(`Different groups`);
+    }
+    const out = [];
+    for (let i = 0; i < this.arr.length; i++) {
+      out.push(this.arr[that.arr[i]]);
+    }
+    return new Permutation(out, this.labels);
+  }
+
+  eq(that: GroupElement): boolean {
+    if (!(that instanceof Permutation) || that.arr.length !== this.arr.length) {
+      return false;
+    }
+    return this.arr.every((d, i) => d === that.arr[i]);
+  }
+
+  toCycles(): number[][] {
+    let seen = 0n;
+    const cycles: number[][] = [];
+    for (let i = 0; i < this.arr.length; i++) {
+      let j = i;
+      let cycle;
+      for (;;) {
+        const mj = 1n << BigInt(j);
+        if (seen & mj) break;
+        if (!cycle) cycle = [];
+        cycle.push(j);
+        seen |= mj;
+        j = this.arr[j];
+      }
+      if (cycle?.length > 1) {
+        cycles.push(cycle);
+      }
+    }
+    return cycles;
+  }
+
+  toString() {
+    if (!this.labels && this.arr.length < CYCLE_PIVOT) {
+      // TODO - customize this condition?
+      return `[${this.arr.map(i => i + 1).join('')}]`;
+    }
+    const cycles = this.toCycles();
+    if (!cycles.length) return 'e';
+    return `(${this.toCycles()
+        .map(c => c.map(e => this.labels ? this.labels[e] : e + 1).join(' '))
+        .join(')(')})`;
+  }
+
+  get name(): string {
+    if (!this._name) this._name = this.toString();
+    return this._name!;
+  }
 }
 
 
@@ -124,59 +233,19 @@ export class DirectProductGroup implements Group {
   *[Symbol.iterator]() {
     const elts = this.groups.map(g => [...g]);
     const k = elts.length;
-    // const left = [];
-    // const right = [];
     let n = 1;
     for (const g of elts) {
-      // left.push(n);
       n *= g.length;
     }
-    // for (let i = 1; i < k; i++) {
-    //   right[i - 1] = n / left[i];
-    // }
-    // right.push(1);
     for (let i = 0; i < n; i++) {
       const elt = [];
       let x = i;
       for (let j = 0; j < k; j++) {
         elt.push(elts[j][x % elts[j].length])
         x = Math.floor(x / elts[j].length);
-        // const l = Math.floor(i / left[j]);
-        // const r = i - left[j] * l;
-        // elt.push(elts[j][Math.floor(i ])
       }
       yield new DirectProductElement(this, elt);
     }
-    // const stack = [this.groups[0][Symbol.iterator]()];
-    // const elts = [];
-
-//     2, 2, 3
-// L = 1, 2, 4
-// R = 6, 3, 1
-// 0 -> 0,0,0
-// 1 -> 1,0,0   = (1%R[0], 
-// 2 -> 0,1,0   = (2%R[0], 2/
-    
-
-    // while (stack.length) {
-    //   while (stack.length < this.groups.length) {
-    //     const {value, done} = stack[elts.length].next();
-    //     if (done) {
-    //       stack.pop();
-    //       elts.pop();
-    //       break;
-    //     }
-    //     elts.push(value);
-    //     stack.push(this.groups[stack.length][Symbol.iterator]());
-    //   }
-    //   const lastIter = stack.pop();
-    //   console.log(lastIter);
-    //   let value, done;
-    //   while (({value, done} = lastIter.next()), !done) {
-    //     yield new DirectProductElement(this, [...elts, value]);
-    //   }
-    //   elts.pop();
-    // }
   }
 
   parse(name: string) {
