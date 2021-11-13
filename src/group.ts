@@ -18,10 +18,10 @@ export class DihedralGroup implements Group {
 
   constructor(n: number|bigint) {
     this.n = BigInt(n);
-    this.order = n << 1n;
+    this.order = this.n << 1n;
   }
 
-  parse(name: string): GroupElement|undefined {
+  parse(name: string): bigint|undefined {
     if (name === 'e') return 0n;
     const match = /^(r?)(-?\d*)(s?)(\d*)$/.exec(name);
     if (!match) return undefined;
@@ -35,7 +35,9 @@ export class DihedralGroup implements Group {
   name(x: bigint): string {
     const s = x & 1n;
     const r = pmod(x >> 1n, this.n);
-    `r${r > 1 ? r : ''}${s ? 's' : ''}` : s ? 's' : 'e';
+    if (!s && !r) return 'e';
+    if (!r) return 's';
+    return `r${r > 1 ? r : ''}${s ? 's' : ''}`;
   }
 
   mul(a: bigint, b: bigint): bigint {
@@ -71,11 +73,11 @@ export class CyclicGroup implements Group {
     const match = /^g(-?\d*)$/.exec(name);
     if (!match) return undefined;
     const i = match[1] ? Number(match[1]) : 1;
-    return pmod(i, this.n);
+    return pmod(BigInt(i), this.n);
   }
   name(x: bigint): string {
     x = pmod(x, this.n);
-    return x ? `g${i > 1 ? i : ''}` : 'e';
+    return x ? `g${x > 1n ? x : ''}` : 'e';
   }
 
   mul(a: bigint, b: bigint): bigint {
@@ -106,17 +108,19 @@ abstract class PermutationGroup {
     this.n = BigInt(n);
   }
 
-  parse(name: string): bigint|undefined {
+  parse(_name: string): bigint|undefined {
     throw new Error('not implemented');
   }
-  name(p: bigint): string {
-    if (!this.labels && n < CYCLE_PIVOT) {
+  name(index: bigint): string {
+    const perm = permutation(this.n, index);
+    if (!this.labels && this.n < CYCLE_PIVOT) {
       // TODO - customize this condition?
-      return `[${this.arr.map(i => i + 1).join('')}]`;
+      return `[${perm.map(i => i + 1).join('')}]`;
     }
-    const cycles = this.toCycles();
-    if (!cycles.length) return 'e';
-    return `(${this.toCycles()
+
+    const cyc = cycles(perm);
+    if (!cyc.length) return 'e';
+    return `(${cyc
         .map(c => c.map(e => this.labels ? this.labels[e] : e + 1).join(' '))
         .join(')(')})`;
   }
@@ -152,7 +156,7 @@ function permutation(n: bigint, p: bigint): number[] {
   return perm;
 }
 
-function index(perm: number[]): bigint {
+function permutationIndex(perm: number[]): bigint {
   const parity = swaps(perm) & 1;
   if (parity) {
     perm = [...perm];
