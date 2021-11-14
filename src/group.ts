@@ -95,24 +95,38 @@ export class CyclicGroup implements Group {
 
 // TODO - update other groups to bigints as well...
 
-const [] = [range];
-function range(n: number) {
-  return Array.from({length: n}, (_, i) => i);
+function range(length: number): number[] {
+  return Array.from({length}, (_, i) => i);
 }
 
-abstract class PermutationGroup {
+function factorial(n: bigint): bigint {
+  let fact = 1n;
+  while (n > 1) fact *= n--;
+  return fact;
+}
+
+export class SymmetricGroup implements Group {
   readonly n: bigint;
-  abstract readonly order: bigint;
+  readonly order: bigint;
   readonly id = 0n;
-  constructor(n: number|bigint, readonly labels?: string[]) {
+  constructor(n: number|bigint, readonly labels?: string[],
+              alternating = 0n) {
     this.n = BigInt(n);
+    this.order = factorial(this.n) >> alternating;
+  }
+
+  protected fromIndex(x: bigint): number[] {
+    return permutation(this.n, x);
+  }
+  protected toIndex(p: number[]): bigint {
+    return permutationIndex(p);
   }
 
   parse(_name: string): bigint|undefined {
     throw new Error('not implemented');
   }
   name(index: bigint): string {
-    const perm = permutation(this.n, index);
+    const perm = this.fromIndex(index);
     if (!this.labels && this.n < CYCLE_PIVOT) {
       // TODO - customize this condition?
       return `[${perm.map(i => i + 1).join('')}]`;
@@ -125,99 +139,101 @@ abstract class PermutationGroup {
         .join(')(')})`;
   }
 
+  mul(x: bigint, y: bigint): bigint {
+    const xp = this.fromIndex(x);
+    const yp = this.fromIndex(y);
+    const p = [];
+    for (let i = 0; i < xp.length; i++) {
+      p.push(xp[yp[i]]);
+    }
+    return this.toIndex(p);
+  }
+  inv(x: bigint): bigint {
+    const xp = this.fromIndex(x);
+    const p = [];
+    for (let i = 0; i < p.length; i++) {
+      p[xp[i]] = i;
+    }
+    return this.toIndex(p);
+  }
 
+  toString() {
+    return `S${this.n}`;
+  }
 }
 
-function pick(i: number, arr: number[]): number {
-  const n = arr.length - 1;
-  i = n - i;
-  const result = arr[i] ?? i;
-  if (i < n) arr[i] = arr[n] ?? n;
-  arr.pop();
-  return result;
+export class AlternatingGroup extends SymmetricGroup {
+  constructor(n: number|bigint, labels?: string[]) {
+    super(n, labels, 1n);
+  }
+
+  override fromIndex(x: bigint): number[] {
+    return super.fromIndex(x << 1n);
+  }
+  override toIndex(p: number[]): bigint {
+    return super.toIndex(p) >> 1n;
+  }
+
+  override toString() {
+    return `A${this.n}`;
+  }
 }
 
 function permutation(n: bigint, p: bigint): number[] {
+  const length = Number(n);
+  const rest = range(length);
+  const perm: number[] = new Array(length).fill(0);
   const parity = Number(p & 1n);
   p >>= 1n;
-  const perm = new Array(Number(n));
-  const rest = new Array(Number(n));
-  while (rest.length) {
-    const j = pick(Number(p % n), rest);
-    const i = rest.length;
-    p /= n--;
-    perm[i] = j;
+  let d = 3n;
+  let i = length - 3;
+  // Decode the skips
+  while (i >= 0) {
+    perm[i--] = Number(p % d);
+    p /= d++;
+  }
+  // Apply the skips in forward order
+  rest.splice(perm[0], 1);
+  for (let i = 1; i < length; i++) {
+    perm[i] = rest.splice(perm[i], 1)[0];
   }
   if ((countSwaps(perm) & 1) !== parity) {
-    const tmp = perm[0];
-    perm[0] = perm[1];
-    perm[1] = tmp;
+    const tmp = perm[length - 1];
+    perm[length - 1] = perm[length - 2];
+    perm[length - 2] = tmp;
   }
   return perm;
 }
 
-const [] = [permutationIndex];
-function permutationIndex(perm: number[]): bigint {
-  const last = perm.length - 1;
-  const parity = countSwaps(perm) & 1;
-  if (parity) {
-    perm = [...perm];
-    const tmp = perm[last];
-    perm[last] = perm[last - 1];
-    perm[last - 1] = tmp;
+function popCount(x: bigint): bigint {
+  let count = 0n;
+  while (x) {
+    x &= (x - 1n);
+    count++;
   }
-  // TODO - how to "unpick"?
-  // need to keep an ordered list...
-  throw new Error();
+  return count;
 }
 
-// function permutation(n: bigint, p: bigint): number[] {
-//   const parity = Number(p & 1n);
-//   p >>= 1n;
-//   let swaps = 0;
-//   // N options...
-//   const array = new Array(Number(n));
-//   const rest = new Array(Number(n));
-//   const rev = new Array(Number(n));
-//   while (rest.length) {
-//     const j = pick(Number(p % n), rest);
-//     const i = rest.length;
-//     p /= n--;
-//     array[i] = j;
-//     // Need to keep track of parity
-//     if (i === j) continue;
-//     let ii = i;
-//     let jj = j;
-//     while (rev[ii] != null && rev[ii] !== ii) {
-//       [ii, rev[ii]] = [rev[ii], j];
-//     }
-//     while (rev[jj] != null && rev[jj] !== jj) {
-//       [jj, rev[jj]] = [rev[jj], i];
-//     }
-//     // Followed all the chains - see if it linked up
-//     if (ii === jj || (rev[ii] != null && rev[ii] === rev[jj])) continue;
-//     swaps++;
-//     rev[ii] = j;
-//     rev[jj] = i;
-//   }
-//   if ((swaps & 1) !== parity) {
-//     const tmp = array[0];
-//     array[0] = array[1];
-//     array[1] = tmp;
-//   }
-//   return array;
-// }
+function permutationIndex(perm: number[]): bigint {
+  const length = perm.length;
+  const parity = countSwaps(perm) & 1;
+  // Figure out the skips
+  let index = 0n;
+  let factor = BigInt(length);
+  let seen = 0n;
+  const skipArr = [];
+  for (let i = 0; i < length - 2; i++) {
+    const elem = BigInt(perm[i]);
+    const mask = 1n << elem;
+    const skip = skipArr[i] = elem - popCount(seen & (mask - 1n));
+    index += skip;
+    index *= --factor;
+    seen |= mask;
+  }
+  return index + BigInt(parity);
+}
 
-// !a[i] => a[i] = j
-// a[j] = i
-// 
-// 4123
-// 4    4..1 (1) j=4 i=1 -> !a[1] => a[1] = 4;  !a[4] => a[4] = 1;  ++
-// 41   44.2 (2) j=1 i=2 - !a[2] => a[2] = 1;  a[1] == 4 => a[4] = 2, a[2]=4; ++
-// 412  4423 (3) see a 2@3 - !a[3] => a[3] = 2;  a[2] == 4 => a[4] = 3; ++
-// 4123 OK       see a 3@4 - a[4] == 3 => OK
-
-function permutationCycles(perm: readonly number[]): number[][] {
+export function permutationCycles(perm: readonly number[]): number[][] {
   let seen = 0n;
   const cycles: number[][] = [];
   for (let i = 0; i < perm.length; i++) {
@@ -255,106 +271,6 @@ function countSwaps(perm: number[]): number {
   }
   return swaps;
 }
-
-// function* permute(n: number, yieldOdds: boolean) {
-//   const arr = range(n);
-//   let parity = 0;
-//   function swap(a: number, b: number) {
-//     const t = arr[a];
-//     arr[a] = arr[b];
-//     arr[b] = t;
-//     parity ^= 1;
-//   }
-//   while (true) {
-//     if (yieldOdds || !parity) yield new Permutation([...arr]);
-//     let i = n - 1;
-//     while (i > 0 && arr[i - 1] >= arr[i]) { i--; }
-//     if (i <= 0) return;
-//     let j = n;
-//     while (j > i && arr[j - 1] <= arr[i - 1]) { j--; }
-//     swap((i++) - 1, j - 1);
-//     j = n;
-//     while (i < j) {
-//       swap((i++) - 1, (j--) - 1);
-//     }
-//   }
-// }
-
-// export class SymmetricGroup extends PermutationGroup {
-//   // Question: do we notate w/ cyces or permutation lists?
-//   // Maybe it depends on n?
-//   // But what about the parse?  Always accept cycles?
-//   // Maybe notate w/ [] for list or () for cycles?
-//   constructor(n: number) { super(n); }
-
-//   *[Symbol.iterator]() {
-//     yield* permute(this.n, true);
-//   }
-// }
-
-// export class AlternatingGroup extends PermutationGroup {
-//   // Question: do we notate w/ cyces or permutation lists?
-//   // Maybe it depends on n?
-//   // But what about the parse?  Always accept cycles?
-//   // Maybe notate w/ [] for list or () for cycles?
-//   constructor(n: number) { super(n); }
-
-//   *[Symbol.iterator]() {
-//     yield* permute(this.n, false);
-//   }
-// }
-
-class Permutation {
-  constructor(readonly arr: readonly number[],
-              readonly labels?: readonly string[]) {}
-
-  private _name?: string = undefined;
-
-  mul(that: Permutation): Permutation {
-    if (!(that instanceof Permutation) || that.arr.length !== this.arr.length) {
-      throw new Error(`Different groups`);
-    }
-    const out = [];
-    for (let i = 0; i < this.arr.length; i++) {
-      out.push(this.arr[that.arr[i]]);
-    }
-    return new Permutation(out, this.labels);
-  }
-
-  eq(that: Permutation): boolean {
-    if (!(that instanceof Permutation) || that.arr.length !== this.arr.length) {
-      return false;
-    }
-    return this.arr.every((d, i) => d === that.arr[i]);
-  }
-
-  inv(): Permutation {
-    const out = [];
-    for (let i = 0; i < this.arr.length; i++) {
-      out[this.arr[i]] = i;
-    }
-    return new Permutation(out, this.labels);
-  }
-
-
-  toString() {
-    if (!this.labels && this.arr.length < CYCLE_PIVOT) {
-      // TODO - customize this condition?
-      return `[${this.arr.map(i => i + 1).join('')}]`;
-    }
-    const cyc = permutationCycles(this.arr);
-    if (!cyc.length) return 'e';
-    return `(${cyc
-        .map(c => c.map(e => this.labels ? this.labels[e] : e + 1).join(' '))
-        .join(')(')})`;
-  }
-
-  get name(): string {
-    if (!this._name) this._name = this.toString();
-    return this._name!;
-  }
-}
-
 
 // export class DirectProductGroup implements Group {
 //   readonly groups: readonly Group[];
@@ -544,5 +460,3 @@ function pmod(a: bigint, b: bigint): bigint {
 //   }
 //   return [cycles, par, parity(arr)];
 // }
-
-const [] = [PermutationGroup, Permutation];

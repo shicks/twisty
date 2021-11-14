@@ -9,10 +9,19 @@ import * as group from  './group.js';
 //   }
 // }
 
-const g = new group.AlternatingGroup(4);
-for (const x of g) {
-  for (const y of g) {
-    console.log(`${x} ${y} = ${x.mul(y)}`);
-  }
-}
+// const g = new group.AlternatingGroup(4);
+// for (const x of g) {
+//   for (const y of g) {
+//     console.log(`${x} ${y} = ${x.mul(y)}`);
+//   }
+// }
 
+const n = 6n;
+let order = 1n;
+for (let i = 1n; i <= n; i++) order *= i;
+for (let i = 0n; i < order; i++) {
+  const p = group.permutation(n, i);
+  const j = group.permutationIndex(p);
+  const mismatch = i !== j ? `\x1b[1;31mMISMATCH\x1b[m` : '';
+  console.log(i, p, j, mismatch);
+}
