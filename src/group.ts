@@ -95,7 +95,7 @@ export class CyclicGroup implements Group {
 
 // TODO - update other groups to bigints as well...
 
-
+const [] = [range];
 function range(n: number) {
   return Array.from({length: n}, (_, i) => i);
 }
@@ -118,7 +118,7 @@ abstract class PermutationGroup {
       return `[${perm.map(i => i + 1).join('')}]`;
     }
 
-    const cyc = cycles(perm);
+    const cyc = permutationCycles(perm);
     if (!cyc.length) return 'e';
     return `(${cyc
         .map(c => c.map(e => this.labels ? this.labels[e] : e + 1).join(' '))
@@ -148,7 +148,7 @@ function permutation(n: bigint, p: bigint): number[] {
     p /= n--;
     perm[i] = j;
   }
-  if ((swaps(perm) & 1) !== parity) {
+  if ((countSwaps(perm) & 1) !== parity) {
     const tmp = perm[0];
     perm[0] = perm[1];
     perm[1] = tmp;
@@ -156,16 +156,19 @@ function permutation(n: bigint, p: bigint): number[] {
   return perm;
 }
 
+const [] = [permutationIndex];
 function permutationIndex(perm: number[]): bigint {
-  const parity = swaps(perm) & 1;
+  const last = perm.length - 1;
+  const parity = countSwaps(perm) & 1;
   if (parity) {
     perm = [...perm];
-    const tmp = perm[0];
-    perm[0] = perm[1];
-    perm[1] = tmp;
+    const tmp = perm[last];
+    perm[last] = perm[last - 1];
+    perm[last - 1] = tmp;
   }
   // TODO - how to "unpick"?
   // need to keep an ordered list...
+  throw new Error();
 }
 
 // function permutation(n: bigint, p: bigint): number[] {
@@ -214,12 +217,12 @@ function permutationIndex(perm: number[]): bigint {
 // 412  4423 (3) see a 2@3 - !a[3] => a[3] = 2;  a[2] == 4 => a[4] = 3; ++
 // 4123 OK       see a 3@4 - a[4] == 3 => OK
 
-function cycles(perm: number[]): number[][] {
+function permutationCycles(perm: readonly number[]): number[][] {
   let seen = 0n;
   const cycles: number[][] = [];
   for (let i = 0; i < perm.length; i++) {
     let j = i;
-    let cycle;
+    let cycle!: undefined|number[];
     for (;;) {
       const mj = 1n << BigInt(j);
       if (seen & mj) break;
@@ -228,16 +231,16 @@ function cycles(perm: number[]): number[][] {
       seen |= mj;
       j = perm[j];
     }
-    if (cycle?.length > 1) {
-      cycles.push(cycle);
+    if (cycle?.length! > 1) {
+      cycles.push(cycle!);
     }
   }
   return cycles;
 }
 
-function swaps(perm: number[]): number {
+function countSwaps(perm: number[]): number {
   let seen = 0n;
-  const swaps = 0;
+  let swaps = 0;
   for (let i = 0; i < perm.length; i++) {
     let j = i;
     let cycle = 0;
@@ -253,61 +256,61 @@ function swaps(perm: number[]): number {
   return swaps;
 }
 
-function* permute(n: number, yieldOdds: boolean) {
-  const arr = range(n);
-  let parity = 0;
-  function swap(a, b) {
-    const t = arr[a];
-    arr[a] = arr[b];
-    arr[b] = t;
-    parity ^= 1;
-  }
-  while (true) {
-    if (yieldOdds || !parity) yield new Permutation([...arr]);
-    let i = n - 1;
-    while (i > 0 && arr[i - 1] >= arr[i]) { i--; }
-    if (i <= 0) return;
-    let j = n;
-    while (j > i && arr[j - 1] <= arr[i - 1]) { j--; }
-    swap((i++) - 1, j - 1);
-    j = n;
-    while (i < j) {
-      swap((i++) - 1, (j--) - 1);
-    }
-  }
-}
+// function* permute(n: number, yieldOdds: boolean) {
+//   const arr = range(n);
+//   let parity = 0;
+//   function swap(a: number, b: number) {
+//     const t = arr[a];
+//     arr[a] = arr[b];
+//     arr[b] = t;
+//     parity ^= 1;
+//   }
+//   while (true) {
+//     if (yieldOdds || !parity) yield new Permutation([...arr]);
+//     let i = n - 1;
+//     while (i > 0 && arr[i - 1] >= arr[i]) { i--; }
+//     if (i <= 0) return;
+//     let j = n;
+//     while (j > i && arr[j - 1] <= arr[i - 1]) { j--; }
+//     swap((i++) - 1, j - 1);
+//     j = n;
+//     while (i < j) {
+//       swap((i++) - 1, (j--) - 1);
+//     }
+//   }
+// }
 
-export class SymmetricGroup extends PermutationGroup {
-  // Question: do we notate w/ cyces or permutation lists?
-  // Maybe it depends on n?
-  // But what about the parse?  Always accept cycles?
-  // Maybe notate w/ [] for list or () for cycles?
-  constructor(n: number) { super(n); }
+// export class SymmetricGroup extends PermutationGroup {
+//   // Question: do we notate w/ cyces or permutation lists?
+//   // Maybe it depends on n?
+//   // But what about the parse?  Always accept cycles?
+//   // Maybe notate w/ [] for list or () for cycles?
+//   constructor(n: number) { super(n); }
 
-  *[Symbol.iterator]() {
-    yield* permute(this.n, true);
-  }
-}
+//   *[Symbol.iterator]() {
+//     yield* permute(this.n, true);
+//   }
+// }
 
-export class AlternatingGroup extends PermutationGroup {
-  // Question: do we notate w/ cyces or permutation lists?
-  // Maybe it depends on n?
-  // But what about the parse?  Always accept cycles?
-  // Maybe notate w/ [] for list or () for cycles?
-  constructor(n: number) { super(n); }
+// export class AlternatingGroup extends PermutationGroup {
+//   // Question: do we notate w/ cyces or permutation lists?
+//   // Maybe it depends on n?
+//   // But what about the parse?  Always accept cycles?
+//   // Maybe notate w/ [] for list or () for cycles?
+//   constructor(n: number) { super(n); }
 
-  *[Symbol.iterator]() {
-    yield* permute(this.n, false);
-  }
-}
+//   *[Symbol.iterator]() {
+//     yield* permute(this.n, false);
+//   }
+// }
 
-class Permutation implements GroupElement {
+class Permutation {
   constructor(readonly arr: readonly number[],
               readonly labels?: readonly string[]) {}
 
   private _name?: string = undefined;
 
-  mul(that: GroupElement): GroupElement {
+  mul(that: Permutation): Permutation {
     if (!(that instanceof Permutation) || that.arr.length !== this.arr.length) {
       throw new Error(`Different groups`);
     }
@@ -318,14 +321,14 @@ class Permutation implements GroupElement {
     return new Permutation(out, this.labels);
   }
 
-  eq(that: GroupElement): boolean {
+  eq(that: Permutation): boolean {
     if (!(that instanceof Permutation) || that.arr.length !== this.arr.length) {
       return false;
     }
     return this.arr.every((d, i) => d === that.arr[i]);
   }
 
-  inv(): GroupElement {
+  inv(): Permutation {
     const out = [];
     for (let i = 0; i < this.arr.length; i++) {
       out[this.arr[i]] = i;
@@ -339,9 +342,9 @@ class Permutation implements GroupElement {
       // TODO - customize this condition?
       return `[${this.arr.map(i => i + 1).join('')}]`;
     }
-    const cycles = this.toCycles();
-    if (!cycles.length) return 'e';
-    return `(${this.toCycles()
+    const cyc = permutationCycles(this.arr);
+    if (!cyc.length) return 'e';
+    return `(${cyc
         .map(c => c.map(e => this.labels ? this.labels[e] : e + 1).join(' '))
         .join(')(')})`;
   }
@@ -353,76 +356,76 @@ class Permutation implements GroupElement {
 }
 
 
-export class DirectProductGroup implements Group {
-  readonly groups: readonly Group[];
-  constructor(...groups: Group[]) {
-    this.groups = groups;
-  }
-  *[Symbol.iterator]() {
-    const elts = this.groups.map(g => [...g]);
-    const k = elts.length;
-    let n = 1;
-    for (const g of elts) {
-      n *= g.length;
-    }
-    for (let i = 0; i < n; i++) {
-      const elt = [];
-      let x = i;
-      for (let j = 0; j < k; j++) {
-        elt.push(elts[j][x % elts[j].length])
-        x = Math.floor(x / elts[j].length);
-      }
-      yield new DirectProductElement(this, elt);
-    }
-  }
+// export class DirectProductGroup implements Group {
+//   readonly groups: readonly Group[];
+//   constructor(...groups: Group[]) {
+//     this.groups = groups;
+//   }
+//   *[Symbol.iterator]() {
+//     const elts = this.groups.map(g => [...g]);
+//     const k = elts.length;
+//     let n = 1;
+//     for (const g of elts) {
+//       n *= g.length;
+//     }
+//     for (let i = 0; i < n; i++) {
+//       const elt = [];
+//       let x = i;
+//       for (let j = 0; j < k; j++) {
+//         elt.push(elts[j][x % elts[j].length])
+//         x = Math.floor(x / elts[j].length);
+//       }
+//       yield new DirectProductElement(this, elt);
+//     }
+//   }
 
-  parse(name: string) {
-    const match = /^\((.*)\)$/.exec(name);
-    if (!match) return undefined;
-    const elts = [];
-    let i = 0;
-    for (const n of match[1].split(/,\s*/g)) {
-      const elt = this.groups[i++].parse(n.trim());
-      if (!elt) return undefined;
-      elts.push(elt);
-    }
-    return new DirectProductElement(this, elts);
-  }
+//   parse(name: string) {
+//     const match = /^\((.*)\)$/.exec(name);
+//     if (!match) return undefined;
+//     const elts = [];
+//     let i = 0;
+//     for (const n of match[1].split(/,\s*/g)) {
+//       const elt = this.groups[i++].parse(n.trim());
+//       if (!elt) return undefined;
+//       elts.push(elt);
+//     }
+//     return new DirectProductElement(this, elts);
+//   }
 
-  id(): GroupElement {
-    return new DirectProductElement(this, this.groups.map(g => g.id()));
-  }
+//   id(): GroupElement {
+//     return new DirectProductElement(this, this.groups.map(g => g.id()));
+//   }
 
-  toString() {
-    return this.groups.join('×');
-  }
-}
+//   toString() {
+//     return this.groups.join('×');
+//   }
+// }
 
-class DirectProductElement implements GroupElement {
-  readonly name: string;
-  constructor(readonly group: DirectProductGroup,
-              readonly elts: GroupElement[]) {
-    this.name = `(${elts.map(e => e.name).join(', ')})`;
-  }
-  mul(that: GroupElement): GroupElement {
-    const g = this.group;
-    if (!(that instanceof DirectProductElement) || that.group !== g) {
-      throw new Error(`Different groups`);
-    }
-    return new DirectProductElement(g, this.elts.map((e, i) => e.mul(that.elts[i])));
-  }
-  eq(that: GroupElement): boolean {
-    if (!(that instanceof DirectProductElement)) return false;
-    for (let i = 0; i < this.elts.length; i++) {
-      if (!this.elts[i].eq(that.elts[i])) return false;
-    }
-    return true;
-  }
-  inv(): GroupElement {
-    return new DirectProductElement(this.group, this.elts.map(e => e.inv()));
-  }
-  toString() { return this.name; }
-}
+// class DirectProductElement implements GroupElement {
+//   readonly name: string;
+//   constructor(readonly group: DirectProductGroup,
+//               readonly elts: GroupElement[]) {
+//     this.name = `(${elts.map(e => e.name).join(', ')})`;
+//   }
+//   mul(that: GroupElement): GroupElement {
+//     const g = this.group;
+//     if (!(that instanceof DirectProductElement) || that.group !== g) {
+//       throw new Error(`Different groups`);
+//     }
+//     return new DirectProductElement(g, this.elts.map((e, i) => e.mul(that.elts[i])));
+//   }
+//   eq(that: GroupElement): boolean {
+//     if (!(that instanceof DirectProductElement)) return false;
+//     for (let i = 0; i < this.elts.length; i++) {
+//       if (!this.elts[i].eq(that.elts[i])) return false;
+//     }
+//     return true;
+//   }
+//   inv(): GroupElement {
+//     return new DirectProductElement(this.group, this.elts.map(e => e.inv()));
+//   }
+//   toString() { return this.name; }
+// }
 
 
 // returns a % b between 0 and b-1
@@ -541,3 +544,5 @@ function pmod(a: bigint, b: bigint): bigint {
 //   }
 //   return [cycles, par, parity(arr)];
 // }
+
+const [] = [PermutationGroup, Permutation];
