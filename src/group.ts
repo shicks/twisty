@@ -109,21 +109,56 @@ export class SymmetricGroup implements Group {
   readonly n: bigint;
   readonly order: bigint;
   readonly id = 0n;
+  readonly reverseLabels: Map<string, number>;
   constructor(n: number|bigint, readonly labels?: string[],
               alternating = 0n) {
     this.n = BigInt(n);
     this.order = factorial(this.n) >> alternating;
+    this.reverseLabels =
+      new Map(labels ?
+        labels.map((l, i) => [l, i]) :
+        range(Number(n)).map(x => [String(x + 1), x]));
   }
 
   protected fromIndex(x: bigint): number[] {
     return permutation(this.n, x);
   }
-  protected toIndex(p: number[]): bigint {
+  protected toIndex(p: number[]): bigint|undefined {
     return permutationIndex(p);
   }
 
-  parse(_name: string): bigint|undefined {
-    throw new Error('not implemented');
+  parse(name: string): bigint|undefined {
+    if (name === 'e') return 0n;
+    // Check for permutation matrix
+    let match = /^\[(.*)\]$/.exec(name);
+    if (match && !this.labels) {
+      const terms = match[1].split('');
+      const perm = match[1].split('').map(x => parseInt(x, 36));
+      if (perm.some(isNaN)) return undefined;
+      if (perm.length !== new Set(terms).size) return undefined;
+      return this.toIndex(perm);
+    }
+    // Check for cycles, using labels
+    if (!/^(?:\([^()]*\))+$/.test(name)) return undefined;
+    const cycles: number[][] = [];
+    const re = /\(([^()]*)\)/g;
+    while ((match = re.exec(name))) {
+      const cycle =
+          match[1].trim().split(/\s+/)
+              .map(term => this.reverseLabels.get(term)!);
+      if (cycle.some(isNaN)) return undefined;
+      cycles.push(cycle);
+    }
+    const perm = range(Number(this.n));
+    for (let i = cycles.length - 1; i >= 0; i--) {
+      const cycle = cycles[i];
+      const tmp = perm[cycle[0]];
+      for (let j = 1; j < cycle.length; j++) {
+        perm[cycle[j - 1]] = perm[cycle[j]];
+      }
+      perm[cycle[cycle.length - 1]] = tmp;
+    }
+    return this.toIndex(perm);
   }
   name(index: bigint): string {
     const perm = this.fromIndex(index);
@@ -146,7 +181,7 @@ export class SymmetricGroup implements Group {
     for (let i = 0; i < xp.length; i++) {
       p.push(xp[yp[i]]);
     }
-    return this.toIndex(p);
+    return this.toIndex(p)!;
   }
   inv(x: bigint): bigint {
     const xp = this.fromIndex(x);
@@ -154,7 +189,7 @@ export class SymmetricGroup implements Group {
     for (let i = 0; i < p.length; i++) {
       p[xp[i]] = i;
     }
-    return this.toIndex(p);
+    return this.toIndex(p)!;
   }
 
   toString() {
@@ -170,8 +205,10 @@ export class AlternatingGroup extends SymmetricGroup {
   override fromIndex(x: bigint): number[] {
     return super.fromIndex(x << 1n);
   }
-  override toIndex(p: number[]): bigint {
-    return super.toIndex(p) >> 1n;
+  override toIndex(p: number[]): bigint|undefined {
+    const index = super.toIndex(p)!;
+    if (index & 1n) return undefined;
+    return index >> 1n;
   }
 
   override toString() {
