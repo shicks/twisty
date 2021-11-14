@@ -216,58 +216,71 @@ export class AlternatingGroup extends SymmetricGroup {
   }
 }
 
-function permutation(n: bigint, p: bigint): number[] {
+// Works in-place: components starts as the maxes, replaced with values.
+function splitComponents(components: bigint[], n: bigint) {
+  for (let i = components.length - 1; i > 0; i--) {
+    const c = components[i];
+    components[i] = n % c;
+    n /= c;
+  }
+  components[0] = n;
+}
+
+// function joinComponents(sizes: readonly bigint[],
+//                         components: readonly bigint[]): bigint {
+//   let n = 0n;
+//   for (let i = 0; i < components.length; i++) {
+//     n *= sizes[i];
+//     n += components[i];
+//   }
+//   return n;
+// }
+
+export function permutation(n: bigint, p: bigint): number[] {
   const length = Number(n);
-  const rest = range(length);
-  const perm: number[] = new Array(length).fill(0);
-  const parity = Number(p & 1n);
-  p >>= 1n;
-  let d = 3n;
-  let i = length - 3;
-  // Decode the skips
-  while (i >= 0) {
-    perm[i--] = Number(p % d);
-    p /= d++;
+  const components = Array.from({length: length - 1}, (_, i) => n - BigInt(i));
+  splitComponents(components, p);
+  let parity = 0;
+  for (let i = length - 3; i >= 0; i--) {
+    parity ^= Number(components[i] !== 0n);
   }
-  // Apply the skips in forward order
-  rest.splice(perm[0], 1);
-  for (let i = 1; i < length; i++) {
-    perm[i] = rest.splice(perm[i], 1)[0];
-  }
-  if ((countSwaps(perm) & 1) !== parity) {
-    const tmp = perm[length - 1];
-    perm[length - 1] = perm[length - 2];
-    perm[length - 2] = tmp;
+  if (parity) components[length - 2] ^= 1n;
+  const perm = range(Number(n));
+  for (let i = length - 2; i >= 0; i--) {
+    if (!components[i]) continue;
+    const j = Number(components[i]) + i;
+    const tmp = perm[i];
+    perm[i] = perm[j];
+    perm[j] = tmp;
   }
   return perm;
 }
 
-function popCount(x: bigint): bigint {
-  let count = 0n;
-  while (x) {
-    x &= (x - 1n);
-    count++;
-  }
-  return count;
-}
-
-function permutationIndex(perm: number[]): bigint {
+export function permutationIndex(perm: readonly number[]): bigint {
   const length = perm.length;
-  const parity = countSwaps(perm) & 1;
-  // Figure out the skips
+  const reverse = new Array(length);
+  for (let i = 0; i < length; i++) {
+    reverse[perm[i]] = i;
+  }
+  const p = [...perm];
   let index = 0n;
   let factor = BigInt(length);
-  let seen = 0n;
-  const skipArr = [];
-  for (let i = 0; i < length - 2; i++) {
-    const elem = BigInt(perm[i]);
-    const mask = 1n << elem;
-    const skip = skipArr[i] = elem - popCount(seen & (mask - 1n));
-    index += skip;
-    index *= --factor;
-    seen |= mask;
+  let parity = 0;
+  for (let i = 0; i < length - 1; i++) {
+    index *= factor--;
+    const j = reverse[i];
+    // swap p[i] with p[j]: new p[i] is irrelevant but reverse[p[i]] is now j
+    p[j] = p[i];
+    reverse[p[i]] = j;
+    let term = BigInt(j - i);
+    if (factor > 1n) {
+      parity ^= Number(term > 0n);
+    } else if (parity) {
+      term ^= 1n;
+    }
+    index += term;
   }
-  return index + BigInt(parity);
+  return index;
 }
 
 export function permutationCycles(perm: readonly number[]): number[][] {
@@ -289,24 +302,6 @@ export function permutationCycles(perm: readonly number[]): number[][] {
     }
   }
   return cycles;
-}
-
-function countSwaps(perm: number[]): number {
-  let seen = 0n;
-  let swaps = 0;
-  for (let i = 0; i < perm.length; i++) {
-    let j = i;
-    let cycle = 0;
-    for (;;) {
-      const mj = 1n << BigInt(j);
-      if (seen & mj) break;
-      cycle++;
-      seen |= mj;
-      j = perm[j];
-    }
-    if (cycle > 1) swaps += cycle - 1;
-  }
-  return swaps;
 }
 
 // export class DirectProductGroup implements Group {

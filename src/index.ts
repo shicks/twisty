@@ -16,7 +16,7 @@ import * as group from  './group.js';
 //   }
 // }
 
-// const n = 6n;
+// const n = 5n;
 // let order = 1n;
 // for (let i = 1n; i <= n; i++) order *= i;
 // for (let i = 0n; i < order; i++) {
