@@ -26,7 +26,17 @@ import * as group from  './group.js';
 //   console.log(i, p, j, mismatch);
 // }
 
-const g = new group.SymmetricGroup(5, ['A', 'B', 'C', 'D', 'E']);
+// const g = new group.SymmetricGroup(5, ['A', 'B', 'C', 'D', 'E']);
+// for (let i = 0n; i < g.order; i++) {
+//   console.log(i, g.name(i), g.parse(g.name(i)));
+// }
+
+const g = new group.AliasGroup(new group.SymmetricGroup(4),
+                               ['x', '[2413]'],
+                               ['y', '[3421]'],
+                               ['z', '[2341]']);
 for (let i = 0n; i < g.order; i++) {
   console.log(i, g.name(i), g.parse(g.name(i)));
 }
+
+console.log(group.groupEval(g, 'y3 z y'));

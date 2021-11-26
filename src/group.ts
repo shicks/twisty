@@ -5,9 +5,83 @@ export interface Group {
   readonly order: bigint;
   readonly id: bigint; // always 0n?
   parse(name: string): bigint|undefined;
+  name(arg: bigint): string;
   mul(left: bigint, right: bigint): bigint;
   inv(arg: bigint): bigint;
-  name(arg: bigint): string;
+}
+
+export function groupEval(g: Group, s: string): string {
+  return g.name(
+      s.trim()
+          .split(/\s+/g)
+          .map(a => g.parse(a)!)
+          .reduce((a, b) => g.mul(a, b)));
+}
+
+export class AliasGroup implements Group {
+  readonly order: bigint;
+  readonly id: bigint;
+  readonly byName: ReadonlyMap<string, bigint>;
+  readonly names: ReadonlyMap<bigint, string>;
+
+  constructor(readonly parent: Group,
+              ...generators: Array<readonly [string, bigint|string]>) {
+    this.order = parent.order;
+    this.id = parent.id;
+    const byName = new Map<string, bigint>();
+    const names = new Map<bigint, string>();
+    const gens: [string, bigint][] = [];
+    function add(name: string, elem: bigint) {
+      names.set(elem, name);
+      byName.set(name, elem);
+    }
+    function prefix(a: string, b: string): string {
+      if (b[0] !== a) return a + b;
+      b = b.substring(1);
+      const m = /^(\d+)(.*)$/.exec(b);
+      if (!m) return a + '2' + b;
+      return `${a}${Number(m[1]) + 1}${b}`;
+    }
+    function suffix(a: string, b: string): string {
+      const pow = /\d*$/.exec(a)![0];
+      if (a[a.length - pow.length - 1] !== b) return a + b;
+      a = a.replace(/\d*$/, '');
+      return `${a}${pow ? Number(pow) + 1 : 2}`;
+    }
+    add('e', parent.id);
+    for (const [name, elemOrParentName] of generators) {
+      const elem = typeof elemOrParentName === 'string' ?
+          parent.parse(elemOrParentName) : elemOrParentName;
+      if (elem == null) throw new Error(`Bad generator: ${elemOrParentName}`);
+      gens.push([name, elem]);
+      add(name, elem);
+    }
+    for (const [e1, n1] of names) {
+      if (e1 === parent.id) continue;
+      for (const [n2, e2] of gens) {
+        const e12 = parent.mul(e1, e2);
+        if (!names.has(e12)) add(suffix(n1, n2), e12);
+        const e21 = parent.mul(e2, e1);
+        if (!names.has(e21)) add(prefix(n2, n1), e21);
+      }
+    }
+    this.byName = byName;
+    this.names = names;
+  }
+
+  parse(name: string): bigint|undefined {
+    // TODO - break into pieces and recompute
+    return this.byName.get(name);
+  }
+  name(elem: bigint): string {
+    return this.names.get(elem)!;
+  }
+  mul(left: bigint, right: bigint): bigint {
+    return this.parent.mul(left, right);
+  }  
+  inv(elem: bigint): bigint {
+    return this.inv(elem);
+  }
 }
 
 // Canonical element = r{0,n-1}s{0,1}
@@ -133,7 +207,7 @@ export class SymmetricGroup implements Group {
     let match = /^\[(.*)\]$/.exec(name);
     if (match && !this.labels) {
       const terms = match[1].split('');
-      const perm = match[1].split('').map(x => parseInt(x, 36));
+      const perm = match[1].split('').map(x => parseInt(x, 36) - 1);
       if (perm.some(isNaN)) return undefined;
       if (perm.length !== new Set(terms).size) return undefined;
       return this.toIndex(perm);
