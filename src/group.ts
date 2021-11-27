@@ -1,13 +1,38 @@
 const CYCLE_PIVOT = 0;
 
 // Group elements must be enumerable.
-export interface Group {
-  readonly order: bigint;
-  readonly id: bigint; // always 0n?
-  parse(name: string): bigint|undefined;
-  name(arg: bigint): string;
-  mul(left: bigint, right: bigint): bigint;
-  inv(arg: bigint): bigint;
+export abstract class Group {
+  readonly abstract order: bigint;
+  readonly abstract id: bigint; // always 0n?
+  abstract parse(name: string): bigint|undefined;
+  abstract name(arg: bigint): string;
+  abstract mul(left: bigint, right: bigint): bigint;
+  abstract inv(arg: bigint): bigint;
+
+  parseElt(name: string): GroupElement|undefined {
+    const e = this.parse(name);
+    return e != null ? new GroupElement(this, e) : undefined;
+  }
+
+  pow(arg: bigint, exp: number): bigint {
+    if (exp < 0) {
+      arg = this.inv(arg);
+      exp = -exp;
+    }
+    exp = exp >>> 0;
+    let out = this.id;
+    while (exp) {
+      if (exp & 1) {
+        out = this.mul(out, arg);
+        exp = exp & ~1;
+      }
+      if (exp) {
+        exp = exp >>> 1;
+        arg = this.mul(arg, arg);
+      }
+    }
+    return out;
+  }
 }
 
 export function groupEval(g: Group, s: string): string {
@@ -18,14 +43,16 @@ export function groupEval(g: Group, s: string): string {
           .reduce((a, b) => g.mul(a, b)));
 }
 
-export class AliasGroup implements Group {
+export class AliasGroup extends Group {
   readonly order: bigint;
   readonly id: bigint;
   readonly byName: ReadonlyMap<string, bigint>;
   readonly names: ReadonlyMap<bigint, string>;
 
   constructor(readonly parent: Group,
-              ...generators: Array<readonly [string, bigint|string]>) {
+              generators: Array<readonly [string, bigint|string]>,
+              {sizeLimit = 10000000} = {}) {
+    super();
     this.order = parent.order;
     this.id = parent.id;
     const byName = new Map<string, bigint>();
@@ -34,20 +61,23 @@ export class AliasGroup implements Group {
     function add(name: string, elem: bigint) {
       names.set(elem, name);
       byName.set(name, elem);
+      if (names.size % 50000 === 0) console.log(`names:${names.size}`);
     }
-    function prefix(a: string, b: string): string {
+    function prefixSingle(a: string, b: string): string {
       if (b[0] !== a) return a + b;
       b = b.substring(1);
       const m = /^(\d+)(.*)$/.exec(b);
       if (!m) return a + '2' + b;
       return `${a}${Number(m[1]) + 1}${b}`;
     }
-    function suffix(a: string, b: string): string {
+    function suffixSingle(a: string, b: string): string {
       const pow = /\d*$/.exec(a)![0];
       if (a[a.length - pow.length - 1] !== b) return a + b;
       a = a.replace(/\d*$/, '');
       return `${a}${pow ? Number(pow) + 1 : 2}`;
     }
+    let prefix = prefixSingle;
+    let suffix = suffixSingle;
     add('e', parent.id);
     for (const [name, elemOrParentName] of generators) {
       const elem = typeof elemOrParentName === 'string' ?
@@ -55,6 +85,9 @@ export class AliasGroup implements Group {
       if (elem == null) throw new Error(`Bad generator: ${elemOrParentName}`);
       gens.push([name, elem]);
       add(name, elem);
+      if (name.length > 1 && prefix === prefixSingle) {
+        prefix = suffix = (a, b) => `${a} ${b}`;
+      }
     }
     for (const [e1, n1] of names) {
       if (e1 === parent.id) continue;
@@ -64,9 +97,37 @@ export class AliasGroup implements Group {
         const e21 = parent.mul(e2, e1);
         if (!names.has(e21)) add(prefix(n2, n1), e21);
       }
+      if (names.size > sizeLimit) break;
     }
     this.byName = byName;
     this.names = names;
+  }
+
+  find(repr: string,
+       f: (arg: [string, string]) => void = () => {}): string[] {
+    const arr: string[] = [];
+    for (const [alias, el] of this.byName) {
+      const name = this.parent.name(el);
+      const entry: [string, string] = [name, alias];
+      f(entry);
+      if (entry[0] === repr) arr.push(entry[1]);
+    }
+    arr.sort((a, b) => a.length - b.length);
+    return arr.slice(0, 10);
+  }
+  simplest(n: number,
+           f: (arg: [string, string]) => void = () => {}): Array<[string, string]> {
+    const arr: Array<[string, string]> = [];
+    for (const [alias, el] of this.byName) {
+      const name = this.parent.name(el);
+      const entry: [string, string] = [name, alias];
+      f(entry);
+      if (entry[0] && entry[1]) arr.push(entry);
+    }
+    arr.sort((a, b) => b[1].length - a[1].length);
+    arr.sort((a, b) => a[0].length - b[0].length);
+    const m = new Map(arr);
+    return [...m].slice(0, n);
   }
 
   parse(name: string): bigint|undefined {
@@ -85,12 +146,13 @@ export class AliasGroup implements Group {
 }
 
 // Canonical element = r{0,n-1}s{0,1}
-export class DihedralGroup implements Group {
+export class DihedralGroup extends Group {
   readonly n: bigint;
   readonly order: bigint;
   readonly id = 0n;
 
   constructor(n: number|bigint) {
+    super();
     this.n = BigInt(n);
     this.order = this.n << 1n;
   }
@@ -134,12 +196,13 @@ export class DihedralGroup implements Group {
   }
 }
 
-export class CyclicGroup implements Group {
+export class CyclicGroup extends Group {
   readonly n: bigint;
   readonly order: bigint;
   readonly id = 0n;
 
   constructor(n: number|bigint) {
+    super();
     this.n = this.order = BigInt(n);
   }
   parse(name: string): bigint|undefined {
@@ -179,13 +242,14 @@ function factorial(n: bigint): bigint {
   return fact;
 }
 
-export class SymmetricGroup implements Group {
+export class SymmetricGroup extends Group {
   readonly n: bigint;
   readonly order: bigint;
   readonly id = 0n;
   readonly reverseLabels: Map<string, number>;
   constructor(n: number|bigint, readonly labels?: string[],
               alternating = 0n) {
+    super();
     this.n = BigInt(n);
     this.order = factorial(this.n) >> alternating;
     this.reverseLabels =
@@ -202,25 +266,32 @@ export class SymmetricGroup implements Group {
   }
 
   parse(name: string): bigint|undefined {
+    function err(msg: string): undefined {
+      console.error(msg);
+      return undefined;
+    }
     if (name === 'e') return 0n;
     // Check for permutation matrix
     let match = /^\[(.*)\]$/.exec(name);
     if (match && !this.labels) {
       const terms = match[1].split('');
       const perm = match[1].split('').map(x => parseInt(x, 36) - 1);
-      if (perm.some(isNaN)) return undefined;
-      if (perm.length !== new Set(terms).size) return undefined;
+      if (perm.some(isNaN)) return err(`NaN: ${match[1]}`);
+      if (perm.length !== new Set(terms).size) return err(`Duplication: ${match[1]}`);
       return this.toIndex(perm);
     }
     // Check for cycles, using labels
-    if (!/^(?:\([^()]*\))+$/.test(name)) return undefined;
+    if (!/^(?:\([^()]*\))+$/.test(name)) return err(`No cycles: ${name}`);
     const cycles: number[][] = [];
-    const re = /\(([^()]*)\)/g;
+    const re = /\(([^()]+)\)/g;
     while ((match = re.exec(name))) {
       const cycle =
-          match[1].trim().split(/\s+/)
+          match[1].trim().split(/\s+/g)
               .map(term => this.reverseLabels.get(term)!);
-      if (cycle.some(isNaN)) return undefined;
+      if (cycle.some(isNaN)) {
+        const parts = match[1].trim().split(/\s+/g);
+        return err(`Unknown: [${parts.filter(p => !this.reverseLabels.has(p)).join(' ')}] in [${match[1]}]`);
+      }
       cycles.push(cycle);
     }
     const perm = range(Number(this.n));
@@ -260,7 +331,7 @@ export class SymmetricGroup implements Group {
   inv(x: bigint): bigint {
     const xp = this.fromIndex(x);
     const p = [];
-    for (let i = 0; i < p.length; i++) {
+    for (let i = 0; i < xp.length; i++) {
       p[xp[i]] = i;
     }
     return this.toIndex(p)!;
@@ -310,7 +381,7 @@ function splitComponents(components: bigint[], n: bigint) {
 //   return n;
 // }
 
-export function permutation(n: bigint, p: bigint): number[] {
+function permutation(n: bigint, p: bigint): number[] {
   const length = Number(n);
   const components = Array.from({length: length - 1}, (_, i) => n - BigInt(i));
   splitComponents(components, p);
@@ -330,7 +401,7 @@ export function permutation(n: bigint, p: bigint): number[] {
   return perm;
 }
 
-export function permutationIndex(perm: readonly number[]): bigint {
+function permutationIndex(perm: readonly number[]): bigint {
   const length = perm.length;
   const reverse = new Array(length);
   for (let i = 0; i < length; i++) {
@@ -357,7 +428,7 @@ export function permutationIndex(perm: readonly number[]): bigint {
   return index;
 }
 
-export function permutationCycles(perm: readonly number[]): number[][] {
+function permutationCycles(perm: readonly number[]): number[][] {
   let seen = 0n;
   const cycles: number[][] = [];
   for (let i = 0; i < perm.length; i++) {
@@ -378,7 +449,7 @@ export function permutationCycles(perm: readonly number[]): number[][] {
   return cycles;
 }
 
-// export class DirectProductGroup implements Group {
+// export class DirectProductGroup extends Group {
 //   readonly groups: readonly Group[];
 //   constructor(...groups: Group[]) {
 //     this.groups = groups;
@@ -566,3 +637,78 @@ function pmod(a: bigint, b: bigint): bigint {
 //   }
 //   return [cycles, par, parity(arr)];
 // }
+
+export class GroupElement {
+  constructor(private readonly g: Group, private readonly n: bigint) {}
+  toString() {
+    return this.g.name(this.n);
+  }
+  mul(e: GroupElement): GroupElement {
+    return new GroupElement(this.g, this.g.mul(this.n, e.n));
+  }
+  inv(): GroupElement {
+    return new GroupElement(this.g, this.g.inv(this.n));
+  }
+}
+
+export class Vm {
+  readonly elts = new Map<string, bigint>();
+  constructor(readonly g: Group) {}
+
+  assign(name: string, value: bigint): Vm {
+    this.elts.set(name, value);
+    return this;
+  }
+
+  find(repr: string,
+       f: (arg: [string, string]) => void = () => {}) {
+    const ag = new AliasGroup(this.g, [...this.elts], {sizeLimit: 250000});
+    for (const a of ag.find(repr, f)) {
+      console.log(a);
+    }
+  }
+  simplest(n: number, f: (arg: [string, string]) => void = () => {}) {
+    const ag = new AliasGroup(this.g, [...this.elts], {sizeLimit: 250000});
+    for (const [a, s] of ag.simplest(n, f)) {
+      console.log(`${a}: ${s}`);
+    }
+  }
+
+  eval(expr: string) {
+    expr = expr.trim();
+    let name!: string|undefined;
+    if (expr.includes('=')) {
+      [name, expr] = expr.split(/\s*=\s*/);
+    }
+    const terms = expr.split(/\s+/g).map(term => {
+      const match = /^([a-zA-Z0-9_]+)(~|\^-?\d+|)$/.exec(term);
+      if (!match) return [undefined, 1, term] as const; //throw new Error(`impossible: ${term}`);
+      const elt = this.elts.get(match[1]);
+      const exp = match[2].startsWith('^') ? Number(match[2].substring(1)) :
+                  match[2] === '~' ? -1 : 1;
+      return [elt, exp, match[1]] as const;
+    });
+    let value!: bigint|undefined;
+    if (!terms.some(([e]) => e == null)) {
+      value = terms.map(([t, e]) => this.g.pow(t!, e))
+          .reduce((a, b) => this.g.mul(a, b));
+    } else {
+      value = this.g.parse(expr);
+    }
+    if (value == null) {
+      let msg = '';
+      if (terms.some(([e]) => e != null)) {
+        msg = ': ' + terms.map(([e,, m], i) => e == null ? m : '')
+            .filter(x => x).join(', ');
+      }
+      console.error(`Could not parse [${expr}]${msg}`);
+      return;
+    }
+    if (name) {
+      this.elts.set(name, value);
+    }
+    const show = this.g.name(value);
+    const prefix = name ? name + ' = ' + (show !== expr ? expr + ' = ' : '') : '';
+    console.log(prefix + show);
+  }
+}

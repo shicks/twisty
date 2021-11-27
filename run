@@ -1,3 +1,4 @@
 #!/bin/sh
 #node_modules/esbuild/bin/esbuild --bundle --outfile=dist/index.js src/index.ts && node dist/index
-node_modules/esbuild/bin/esbuild --bundle --outfile=dist/index.js --platform=node src/rl.ts && node dist/index
+#node_modules/esbuild/bin/esbuild --bundle --outfile=dist/index.js --platform=node src/rl.ts && node dist/index
+node_modules/esbuild/bin/esbuild --bundle --outfile=dist/rubik332.js --platform=node src/rubik332.ts && node dist/rubik332

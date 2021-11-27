@@ -1,0 +1,4 @@
+#!/bin/sh
+for name in rubik332; do
+  node_modules/esbuild/bin/esbuild --bundle --outfile=dist/$name.js --platform=node src/$name.ts
+done
