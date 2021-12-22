@@ -676,6 +676,8 @@ export class Vm {
 
   eval(expr: string) {
     expr = expr.trim();
+    const suppressOutput = expr.endsWith(';');
+    if (suppressOutput) expr = expr.replace(/;$/, '').trim();
     let name!: string|undefined;
     if (expr.includes('=')) {
       [name, expr] = expr.split(/\s*=\s*/);
@@ -709,6 +711,6 @@ export class Vm {
     }
     const show = this.g.name(value);
     const prefix = name ? name + ' = ' + (show !== expr ? expr + ' = ' : '') : '';
-    console.log(prefix + show);
+    if (!suppressOutput) console.log(prefix + show);
   }
 }
